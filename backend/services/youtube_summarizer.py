@@ -466,12 +466,12 @@ Now provide your response in this exact format:
 
     async def _summarize_chunk_async(self, chunk: str, chunk_num: int, total_chunks: int) -> tuple[int, str]:
         """Async wrapper to run chunk summarization in thread pool with rate limiting."""
-        # Use semaphore to limit to 1 concurrent call (Gradient has strict rate limits)
-        semaphore = _get_api_semaphore(max_concurrent=1)
+        # Use semaphore to limit concurrent calls (increase for speed, decrease if hitting rate limits)
+        semaphore = _get_api_semaphore(max_concurrent=3)
         
         async with semaphore:
-            # Wait before making request to respect rate limits
-            if chunk_num > 1:
+            # Wait before making request to respect rate limits (skip if delay is 0)
+            if chunk_num > 1 and API_CALL_DELAY_SECONDS > 0:
                 logger.info(f"Waiting {API_CALL_DELAY_SECONDS}s before chunk {chunk_num}...")
                 await asyncio.sleep(API_CALL_DELAY_SECONDS)
             
@@ -510,8 +510,8 @@ Now provide your response in this exact format:
         # Chunk the transcript for long videos
         chunks = self._chunk_transcript(transcript)
         
-        # Summarize chunks sequentially (Gradient has strict rate limits)
-        logger.info(f"Summarizing {len(chunks)} chunks sequentially...")
+        # Summarize chunks (parallel processing enabled)
+        logger.info(f"Summarizing {len(chunks)} chunks...")
         
         # Create async tasks for all chunks
         tasks = [
@@ -529,8 +529,9 @@ Now provide your response in this exact format:
         logger.info(f"All {len(chunks)} chunks processed")
         
         # Generate final summary and top learnings (with rate limit protection)
-        logger.info(f"Waiting {API_CALL_DELAY_SECONDS}s before final summary...")
-        await asyncio.sleep(API_CALL_DELAY_SECONDS)
+        if API_CALL_DELAY_SECONDS > 0:
+            logger.info(f"Waiting {API_CALL_DELAY_SECONDS}s before final summary...")
+            await asyncio.sleep(API_CALL_DELAY_SECONDS)
         logger.info("Generating final summary and learnings...")
         semaphore = _get_api_semaphore(max_concurrent=1)
         async with semaphore:
